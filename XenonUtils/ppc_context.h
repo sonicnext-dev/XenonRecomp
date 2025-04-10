@@ -8,6 +8,7 @@
 #include <climits>
 #include <cmath>
 #include <csetjmp>
+#include <csignal>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -698,6 +699,19 @@ inline simde__m128i simde_mm_vsr(simde__m128i a, simde__m128i b)
     return simde_mm_castps_si128(simde_mm_insert_ps(simde_mm_castsi128_ps(simde_mm_srl_epi64(a, b)), simde_mm_castsi128_ps(simde_mm_srl_epi64(simde_mm_srli_si128(a, 4), b)), 0x10));
 }
 
+inline simde__m128i simde_mm_vctuxs(simde__m128 src1)
+{
+    simde__m128 xmm0 = simde_mm_max_ps(src1, simde_mm_set1_epi32(0));
+    simde__m128 xmm1 = simde_mm_cmpge_ps(xmm0, simde_mm_set1_ps((float)0x80000000));
+    simde__m128 xmm2 = simde_mm_sub_ps(xmm0, simde_mm_set1_ps((float)0x80000000));
+    xmm0 = simde_mm_blendv_ps(xmm0, xmm2, xmm1);
+    simde__m128i dest = simde_mm_cvttps_epi32(xmm0);
+    xmm0 = simde_mm_cmpeq_epi32(dest, simde_mm_set1_epi32(INT_MIN));
+    xmm1 = simde_mm_and_si128(xmm1, simde_mm_set1_epi32(INT_MIN));
+    dest = simde_mm_add_epi32(dest, xmm1);
+    return simde_mm_or_si128(dest, xmm0);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64)
 inline uint64_t __rdtsc()
 {
@@ -708,6 +722,20 @@ inline uint64_t __rdtsc()
 }
 #elif !defined(__x86_64__) && !defined(_M_X64)
 #   error "Missing implementation for __rdtsc()"
+#endif
+
+#ifndef __debugbreak
+#ifdef _WIN32
+#pragma intrinsic(__debugbreak)
+#define __debugbreak __debugbreak
+#else
+// GCC/Clang/Linux fallback
+#ifdef __x86_64__
+#define __debugbreak() asm volatile("int $0x3")
+#else
+#define __debugbreak() raise(SIGTRAP)
+#endif
+#endif
 #endif
 
 #endif

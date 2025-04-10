@@ -1125,6 +1125,14 @@ bool Recompiler::Recompile(
         println("{}.u32);", r(insn.operands[2]));
         break;
 
+    case PPC_INST_LHBRX:
+        // TODO: verify
+        print("\t{}.u64 = __builtin_bswap16(PPC_LOAD_U16(", r(insn.operands[0]));
+        if (insn.operands[1] != 0)
+            print("{}.u32 + ", r(insn.operands[1]));
+        println("{}.u32));", r(insn.operands[2]));
+        break;
+
     case PPC_INST_LI:
         println("\t{}.s64 = {};", r(insn.operands[0]), int32_t(insn.operands[1]));
         break;
@@ -1667,7 +1675,7 @@ bool Recompiler::Recompile(
 
     case PPC_INST_STWU:
         println("\t{} = {} + {}.u32;", ea(), int32_t(insn.operands[1]), r(insn.operands[2]));
-        println("\tPPC_STORE_U32({}, {}.u32);", ea(), r(insn.operands[0]));
+        println("\t{}{}, {}.u32);", mmioStore() ? "PPC_MM_STORE_U32(" : "PPC_STORE_U32(", ea(), r(insn.operands[0]));
         println("\t{}.u32 = {};", r(insn.operands[2]), ea());
         break;
 
@@ -1769,6 +1777,7 @@ bool Recompiler::Recompile(
         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_and_si128(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
         break;
 
+    case PPC_INST_VANDC:
     case PPC_INST_VANDC128:
         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_andnot_si128(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
         break;
@@ -1877,6 +1886,8 @@ bool Recompiler::Recompile(
 
     case PPC_INST_VCMPGTUH:
         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_cmpgt_epu16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_load_si128((simde__m128i*){}.u16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+        if (strchr(insn.opcode->name, '.'))
+             println("\t{}.setFromMask(simde_mm_load_si128((simde__m128i*){}.u16), 0xFFFF);", cr(6), v(insn.operands[0]));
         break;
 
     case PPC_INST_VEXPTEFP:
@@ -2092,13 +2103,177 @@ bool Recompiler::Recompile(
         break;
 
     case PPC_INST_VSEL:
+    case PPC_INST_VSEL128:
         println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_or_si128(simde_mm_andnot_si128(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)), simde_mm_and_si128(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8))));", v(insn.operands[0]), v(insn.operands[3]), v(insn.operands[1]), v(insn.operands[3]), v(insn.operands[2]));
+        break;
+
+    case PPC_INST_VPKSWSS:
+    case PPC_INST_VPKSWSS128:
+        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_packs_epi32(simde_mm_load_si128((simde__m128i*){}.s32), simde_mm_load_si128((simde__m128i*){}.s32)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
+        break;
+
+    case PPC_INST_VSUBUBM:
+        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_sub_epi8(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+        break;
+
+    case PPC_INST_VSRAB:
+        // TODO: vectorize, ensure endianness is correct
+        for (size_t i = 0; i < 16; i++)
+            println("\t{}.s8[{}] = {}.s8[{}] >> ({}.u8[{}] & 0x7);", v(insn.operands[0]), i, v(insn.operands[1]), i, v(insn.operands[2]), i);
+        break;
+
+    case PPC_INST_VSRAH:
+        // TODO: vectorize, ensure endianness is correct
+        for (size_t i = 0; i < 8; i++)
+            println("\t{}.s16[{}] = {}.s16[{}] >> ({}.u8[{}] & 0xF);", v(insn.operands[0]), i, v(insn.operands[1]), i, v(insn.operands[2]), i * 2);
+        break;
+
+    case PPC_INST_VADDSBS:
+        println("\tsimde_mm_store_si128((simde__m128i*){}.s8, simde_mm_adds_epi8(simde_mm_load_si128((simde__m128i*){}.s8), simde_mm_load_si128((simde__m128i*){}.s8)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+        break;
+
+    case PPC_INST_VSPLTISH:
+        println("\tsimde_mm_store_si128((simde__m128i*){}.u16, simde_mm_set1_epi16(int(0x{:X})));", v(insn.operands[0]), insn.operands[1]);
+        break;
+
+    case PPC_INST_VAVGUH:
+        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_avg_epu16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_load_si128((simde__m128i*){}.u16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+        break;
+
+    case PPC_INST_VSLH:
+        // TODO: vectorize
+        for (size_t i = 0; i < 8; i++)
+            println("\t{}.u16[{}] = {}.u16[{}] << ({}.u8[{}] & 0xF);", v(insn.operands[0]), i, v(insn.operands[1]), i, v(insn.operands[2]), i * 2);
+        break;
+
+    case PPC_INST_VSLO:
+        println("\t__debugbreak();");
+        // println("\t{}.u8 = _mm_or_si128(_mm_slli_si128({}.u8, {}), simde_mm_srli_si128({}.u8, {}));",
+        //     v(insn.operands[0]), v(insn.operands[1]), insn.operands[2], v(insn.operands[3]), 16 - insn.operands[2]);
+        break;
+
+    case PPC_INST_VSUBSHS:
+        // TODO: vectorize
+        for (size_t i = 0; i < 8; i++)
+        {
+            println("\t{}.s64 = int64_t({}.s16[{}]) - int64_t({}.s16[{}]);", temp(), v(insn.operands[1]), i, v(insn.operands[2]), i);
+            println("\t{}.s16[{}] = {}.s64 > SHRT_MAX ? SHRT_MAX : {}.s64 < SHRT_MIN ? SHRT_MIN : {}.s64;", v(insn.operands[0]), i, temp(), temp(), temp());
+        }
+        break;
+
+    case PPC_INST_VSRH:
+        // TODO: vectorize, ensure endianness is correct
+        for (size_t i = 0; i < 8; i++)
+            println("\t{}.u16[{}] = {}.u16[{}] >> ({}.u8[{}] & 0xF);", v(insn.operands[0]), i, v(insn.operands[1]), i, v(insn.operands[2]), i * 2);
+        break;
+
+    case PPC_INST_CROR:
+    {
+        constexpr std::string_view fields[] = { "lt", "gt", "eq", "so" };
+        println("\t{}.{} = {}.{} | {}.{};", cr(insn.operands[0] / 4), fields[insn.operands[0] % 4], cr(insn.operands[1] / 4), fields[insn.operands[1] % 4], cr(insn.operands[2] / 4), fields[insn.operands[2] % 4]);
+        break;
+    }
+
+    case PPC_INST_CRORC:
+    {
+        constexpr std::string_view fields[] = { "lt", "gt", "eq", "so" };
+        println("\t{}.{} = {}.{} | (~{}.{} & 1);", cr(insn.operands[0] / 4), fields[insn.operands[0] % 4], cr(insn.operands[1] / 4), fields[insn.operands[1] % 4], cr(insn.operands[2] / 4), fields[insn.operands[2] % 4]);
+        break;
+    }
+
+    case PPC_INST_VPKSHSS:
+    case PPC_INST_VPKSHSS128:
+        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_packs_epi16(simde_mm_load_si128((simde__m128i*){}.s16), simde_mm_load_si128((simde__m128i*){}.s16)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
+        break;
+
+    case PPC_INST_VCMPEQUH:
+        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_cmpeq_epi16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_load_si128((simde__m128i*){}.u16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+        if (strchr(insn.opcode->name, '.'))
+            println("\t{}.setFromMask(simde_mm_load_si128((simde__m128i*){}.u16), 0xFFFF);", cr(6), v(insn.operands[0]));
+        break;
+
+    case PPC_INST_VMINSH:
+        println("\tsimde_mm_store_si128((simde__m128i*){}.u16, simde_mm_min_epi16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_load_si128((simde__m128i*){}.u16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+        break;
+
+    case PPC_INST_VMAXSH:
+        println("\tsimde_mm_store_si128((simde__m128i*){}.u16, simde_mm_max_epi16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_load_si128((simde__m128i*){}.u16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
         break;
 
     case PPC_INST_VSLB:
         // TODO: vectorize
         for (size_t i = 0; i < 16; i++)
             println("\t{}.u8[{}] = {}.u8[{}] << ({}.u8[{}] & 0x7);", v(insn.operands[0]), i, v(insn.operands[1]), i, v(insn.operands[2]), i);
+        break;
+
+    case PPC_INST_VCMPGTSH:
+        println("\tsimde_mm_store_si128((simde__m128i*){}.s8, simde_mm_cmpgt_epi16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_load_si128((simde__m128i*){}.u16)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+        if (strchr(insn.opcode->name, '.'))
+            println("\t{}.setFromMask(simde_mm_load_si128((simde__m128i*){}.s16), 0xFFFF);", cr(6), v(insn.operands[0]));
+        break;
+
+    case PPC_INST_VCMPGTSW:
+        println("\tsimde_mm_store_si128((simde__m128i*){}.s8, simde_mm_cmpgt_epi32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_load_si128((simde__m128i*){}.u32)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+        if (strchr(insn.opcode->name, '.'))
+            println("\t{}.setFromMask(simde_mm_load_si128((simde__m128i*){}.s32), 0xFFFF);", cr(6), v(insn.operands[0]));
+        break;
+
+    case PPC_INST_VADDSWS:
+        // TODO: vectorize
+        for (size_t i = 0; i < 4; i++)
+        {
+            println("\t{}.s64 = int64_t({}.s32[{}]) + int64_t({}.s32[{}]);", temp(), v(insn.operands[1]), i, v(insn.operands[2]), i);
+            println("\t{}.s32[{}] = {}.s64 > INT_MAX ? INT_MAX : {}.s64 < INT_MIN ? INT_MIN : {}.s64;", v(insn.operands[0]), i, temp(), temp(), temp());
+        }
+        break;
+
+    case PPC_INST_VPKSWUS:
+    case PPC_INST_VPKSWUS128:
+        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_packus_epi32(simde_mm_load_si128((simde__m128i*){}.s32), simde_mm_load_si128((simde__m128i*){}.s32)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
+        break;
+
+    case PPC_INST_VCTUXS:
+    case PPC_INST_VCFPUXWS128:
+        printSetFlushMode(true);
+        print("\tsimde_mm_store_si128((simde__m128i*){}.u32, simde_mm_vctuxs(", v(insn.operands[0]));
+        if (insn.operands[2] != 0)
+            println("simde_mm_mul_ps(simde_mm_load_ps({}.f32), simde_mm_set1_ps({}))));", v(insn.operands[1]), 1u << insn.operands[2]);
+        else
+            println("simde_mm_load_ps({}.f32)));", v(insn.operands[1]));
+        break;
+
+    case PPC_INST_VPKUHUS:
+    case PPC_INST_VPKUHUS128:
+        for (size_t i = 0; i < 8; i++)
+        {
+            println("\t{0}.u8[{1}] = {2}.u16[{1}] > UCHAR_MAX ? UCHAR_MAX : {2}.u16[{1}];", vTemp(), i, v(insn.operands[2]));
+            println("\t{0}.u8[{1}] = {2}.u16[{3}] > UCHAR_MAX ? UCHAR_MAX : {2}.u16[{3}];", vTemp(), i + 8, v(insn.operands[1]), i);
+        }
+        println("{} = {};", v(insn.operands[0]), vTemp());
+        break;
+
+    case PPC_INST_EQV:
+        println("\t{}.u64 = ~({}.u64 ^ {}.u64);", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
+        if (strchr(insn.opcode->name, '.'))
+            println("\t{}.compare<int32_t>({}.s32, 0, {});", cr(0), r(insn.operands[0]), xer());
+        break;
+
+    case PPC_INST_MULHD:
+        println("\t{}.s64 = (int64_t)((__int128){}.s64 * (__int128){}.s64 >> 64);",
+                r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
+        break;
+
+    case PPC_INST_MULHDU:
+        println("\t{}.u64 = (uint64_t)((__uint128_t){}.u64 * (__uint128_t){}.u64 >> 64);",
+                r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
+        break;
+
+    case PPC_INST_VRLH:
+        for (size_t i = 0; i < 8; i++)
+        {
+            println("\t{0}.u16[{1}] = ({2}.u16[{1}] << ({3}.u16[{1}] & 0xF)) | ({2}.u16[{1}] >> (16 - ({3}.u16[{1}] & 0xF)));", vTemp(), i, v(insn.operands[1]), v(insn.operands[2]));
+        }
+        println("{} = {};", v(insn.operands[0]), vTemp());
         break;
 
     case PPC_INST_VSLDOI:
