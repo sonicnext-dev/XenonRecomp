@@ -270,6 +270,16 @@ struct PPCFPSCRRegister
         setcsr(csr);
     }
 
+    inline void overrideRoundingMode(uint32_t value) noexcept
+    {
+        setcsr((csr & ~RoundMask) | GuestToHost[value & PPC_ROUND_MASK]);
+    }
+
+    inline void restoreRoundingMode() noexcept
+    {
+        setcsr(csr);
+    }
+
     inline void enableFlushModeUnconditional() noexcept
     {
         csr |= FlushMask;
