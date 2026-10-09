@@ -2038,9 +2038,9 @@ bool Recompiler::Recompile(
 
     case PPC_INST_VREFP:
     case PPC_INST_VREFP128:
-        // TODO: see if we can use rcp safely
+        // TODO: could be more accurate to PPC estimations
         printSetFlushMode(true);
-        println("\tsimde_mm_store_ps({}.f32, simde_mm_div_ps(simde_mm_set1_ps(1), simde_mm_load_ps({}.f32)));", v(insn.operands[0]), v(insn.operands[1]));
+        println("\tsimde_mm_store_ps({}.f32, simde_mm_rcp_ps(simde_mm_load_ps({}.f32)));", v(insn.operands[0]), v(insn.operands[1]));
         break;
 
     case PPC_INST_VRFIM:
@@ -2070,10 +2070,10 @@ bool Recompiler::Recompile(
 
     case PPC_INST_VRSQRTEFP:
     case PPC_INST_VRSQRTEFP128:
-        // TODO: see if we can use rsqrt safely
+        // TODO: could be more accurate to PPC estimations
         // TODO: we can detect if the input is from a dot product and apply logic only on one value
         printSetFlushMode(true);
-        println("\tsimde_mm_store_ps({}.f32, simde_mm_div_ps(simde_mm_set1_ps(1), simde_mm_sqrt_ps(simde_mm_load_ps({}.f32))));", v(insn.operands[0]), v(insn.operands[1]));
+        println("\tsimde_mm_store_ps({}.f32, simde_mm_rsqrt_ps(simde_mm_load_ps({}.f32)));", v(insn.operands[0]), v(insn.operands[1]));
         break;
 
     case PPC_INST_VSEL:
