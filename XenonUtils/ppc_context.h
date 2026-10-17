@@ -707,6 +707,85 @@ inline simde__m128i simde_mm_vctuxs(simde__m128 src1)
     return simde_mm_or_si128(dest, xmm0);
 }
 
+// Bit exact vmsum3fp128/vmsum4fp128 over the last Terms lanes, ported from rexglue's ppc/dot_product.h
+template <int Terms>
+inline simde__m128 simde_mm_vmsumfp(simde__m128 a, simde__m128 b)
+{
+    alignas(16) uint32_t x[4];
+    alignas(16) uint32_t y[4];
+    simde_mm_store_ps((float*)x, a);
+    simde_mm_store_ps((float*)y, b);
+
+    double product[4];
+    double special = 0.0;
+    uint32_t negatives = 0;
+    uint32_t maxExponent = 0;
+    for (int i = 4 - Terms; i < 4; ++i)
+    {
+        uint32_t xi = (x[i] & 0x7F800000) != 0 ? x[i] : (x[i] & 0x80000000);
+        uint32_t yi = (y[i] & 0x7F800000) != 0 ? y[i] : (y[i] & 0x80000000);
+        float fx, fy;
+        memcpy(&fx, &xi, sizeof(fx));
+        memcpy(&fy, &yi, sizeof(fy));
+        product[i] = double(fx) * double(fy);
+        special += product[i];
+        negatives += (xi ^ yi) >> 31;
+        uint32_t exponent = ((xi >> 23) & 0xFF) + ((yi >> 23) & 0xFF);
+        if (product[i] != 0.0 && exponent > maxExponent)
+            maxExponent = exponent;
+    }
+
+    uint32_t result;
+    if (std::isnan(special))
+    {
+        result = 0x7FC00000;
+    }
+    else if (std::isinf(special))
+    {
+        result = special < 0.0 ? 0xFF800000 : 0x7F800000;
+    }
+    else if (maxExponent == 0)
+    {
+        result = negatives == Terms ? 0x80000000 : 0;
+    }
+    else
+    {
+        bool majority = negatives * 2 > Terms;
+        uint64_t scaleBits = uint64_t(1023 + 282 - maxExponent) << 52;
+        double scale;
+        memcpy(&scale, &scaleBits, sizeof(scale));
+
+        int64_t sum = 0;
+        for (int i = 4 - Terms; i < 4; ++i)
+        {
+            int64_t term = int64_t(std::fabs(product[i]) * scale);
+            sum += std::signbit(product[i]) == majority ? term : ~term;
+        }
+
+        int64_t flip = sum >> 63;
+        uint64_t magnitude = uint64_t(sum ^ flip);
+        uint32_t sign = (majority ? 0x80000000 : 0) ^ (uint32_t(flip) & 0x80000000);
+        if (magnitude == 0)
+        {
+            result = 0;
+        }
+        else
+        {
+            int width = 64 - __builtin_clzll(magnitude);
+            int exponent = int(maxExponent) - 283 + width;
+            uint32_t mantissa = uint32_t((magnitude << (64 - width)) >> 40) & 0x7FFFFF;
+            if (exponent < -127)
+                result = sign;
+            else if (exponent > 128)
+                result = sign | 0x7FC00000;
+            else
+                result = sign | (uint32_t(exponent + 127) << 23) | mantissa;
+        }
+    }
+
+    return simde_mm_castsi128_ps(simde_mm_set1_epi32(int32_t(result)));
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64)
 inline uint64_t __rdtsc()
 {
