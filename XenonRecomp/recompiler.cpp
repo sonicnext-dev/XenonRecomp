@@ -2626,7 +2626,7 @@ bool Recompiler::Recompile(const Function& fn)
 
 #ifndef XENON_RECOMP_USE_ALIAS
     println("PPC_WEAK_FUNC({}) {{", name);
-    println("\t__imp__{}(ctx, base);", name);
+    println("\t[[clang::musttail]] return __imp__{}(ctx, base);", name);
     println("}}\n");
 #endif
 
