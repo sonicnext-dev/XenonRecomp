@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "recompiler.h"
 #include <xex_patcher.h>
 

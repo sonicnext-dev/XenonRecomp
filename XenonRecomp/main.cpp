@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "test_recompiler.h"
 
 int main(int argc, char* argv[])

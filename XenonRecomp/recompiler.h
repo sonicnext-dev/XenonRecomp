@@ -1,6 +1,5 @@
 #pragma once
 
-#include "pch.h"
 #include "recompiler_config.h"
 
 struct RecompilerLocalVariables
